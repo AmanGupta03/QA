@@ -6,6 +6,7 @@ import logging
 
 from typing import List
 from pathlib import Path
+import docx
 
 from indexing import *
 
@@ -36,7 +37,14 @@ def split_pdf_in_paras(file: str) -> List[dict]:
 def split_docx_in_paras(file: str) -> List[dict]:
   """
   """
-  pass
+  paras = []
+  doc = docx.Document(file)  # Creating word reader object.
+
+  for para in doc.paragraphs:
+    if para.text.strip() != "" and is_significant(para.text):
+        paras.append({"text": para.text, "meta": {"name": Path(file).name}})
+  
+  return paras
 
 
 def split_handwritten_in_paras(file: str) -> List[dict]:
