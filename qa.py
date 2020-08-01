@@ -9,6 +9,8 @@ from haystack.database.elasticsearch import ElasticsearchDocumentStore
 from haystack import Finder
 from typing import Dict, List
 
+import re
+
 enable_elastic_search()
 
 document_store_dense = ElasticsearchDocumentStore(host="localhost", username="", password="", index="document", embedding_field="embedding", embedding_dim=768)
@@ -20,6 +22,39 @@ document_store_dense.update_embeddings(dense_retriever)
 
 reader = FARMReader(model_name_or_path="deepset/roberta-base-squad2", use_gpu=True)
 
+alphabets= "([A-Za-z])"
+prefixes = "(Mr|St|Mrs|Ms|Dr)[.]"
+suffixes = "(Inc|Ltd|Jr|Sr|Co)"
+starters = "(Mr|Mrs|Ms|Dr|He\s|She\s|It\s|They\s|Their\s|Our\s|We\s|But\s|However\s|That\s|This\s|Wherever)"
+acronyms = "([A-Z][.][A-Z][.](?:[A-Z][.])?)"
+websites = "[.](com|net|org|io|gov)"
+
+def split_into_sentences(text):
+    text = " " + text + "  "
+    text = text.replace("\n"," ")
+    text = re.sub(prefixes,"\\1<prd>",text)
+    text = re.sub(websites,"<prd>\\1",text)
+    if "Ph.D" in text: text = text.replace("Ph.D.","Ph<prd>D<prd>")
+    text = re.sub("\s" + alphabets + "[.] "," \\1<prd> ",text)
+    text = re.sub(acronyms+" "+starters,"\\1<stop> \\2",text)
+    text = re.sub(alphabets + "[.]" + alphabets + "[.]" + alphabets + "[.]","\\1<prd>\\2<prd>\\3<prd>",text)
+    text = re.sub(alphabets + "[.]" + alphabets + "[.]","\\1<prd>\\2<prd>",text)
+    text = re.sub(" "+suffixes+"[.] "+starters," \\1<stop> \\2",text)
+    text = re.sub(" "+suffixes+"[.]"," \\1<prd>",text)
+    text = re.sub(" " + alphabets + "[.]"," \\1<prd>",text)
+    if "”" in text: text = text.replace(".”","”.")
+    if "\"" in text: text = text.replace(".\"","\".")
+    if "!" in text: text = text.replace("!\"","\"!")
+    if "?" in text: text = text.replace("?\"","\"?")
+    text = text.replace(".",".<stop>")
+    text = text.replace("?","?<stop>")
+    text = text.replace("!","!<stop>")
+    text = text.replace("<prd>",".")
+    sentences = text.split("<stop>")
+    sentences = sentences[:-1]
+    sentences = [s.strip() for s in sentences]
+    return sentences
+
 def prepare_answer_with_granularity(results: List) -> Dict:
   """
   """
@@ -27,7 +62,7 @@ def prepare_answer_with_granularity(results: List) -> Dict:
     return {'status': 'fail'}
   
   answers = [results[0]['answer']]  
-  content = results[0]['context']
+  content = results[0]['para']
   content = split_into_sentences(content)
   answer = results[0]['answer']
   for sen in content:
